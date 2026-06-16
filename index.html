@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full overflow-hidden dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SQLite Lens</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{}}}</script>
+  
+  <style>
+    /* base variables */
+    :root {
+      --color-bg: #f8fafc; --color-surface: #ffffff; --color-surface-alt: #f1f5f9;
+      --color-primary: #6366f1; --color-text: #1e293b; --color-text-secondary: #64748b;
+      --color-border: #e2e8f0; --color-shadow: rgba(0,0,0,0.08);
+    }
+    .dark {
+      --color-bg: #0f172a; --color-surface: #1e293b; --color-surface-alt: #334155;
+      --color-primary: #818cf8; --color-text: #f1f5f9; --color-text-secondary: #94a3b8;
+      --color-border: #334155; --color-shadow: rgba(0,0,0,0.4);
+    }
+    * { box-sizing: border-box; }
+    body { overflow: hidden; font-family: 'Inter', system-ui, sans-serif; }
+    .hidden { display: none !important; }
+
+    /* right toolbar buttons */
+    .tool-icon {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; cursor: pointer;
+      transition: all 0.2s; color: var(--color-text-secondary);
+      background: transparent; border: 1px solid transparent;
+    }
+    .tool-icon:hover, .tool-icon.active { color: var(--color-primary); background: var(--color-surface-alt); border-color: var(--color-border); }
+    .tool-icon i { font-size: 1rem; }
+    .tool-icon span { font-size: 0.5rem; line-height: 1; margin-top: 0.125rem; }
+
+    /* glass accent (optional) */
+    .btn-glass {
+      display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.5rem;
+      font-size: 0.7rem; font-weight: 500; border-radius: 0.5rem; transition: all 0.2s;
+      color: rgb(219,39,119); border: 1px solid rgba(255,255,255,0.3);
+      backdrop-filter: blur(8px); background-color: rgba(255,255,255,0.2);
+      box-shadow: 0 2px 4px rgba(236,72,153,0.15); cursor: pointer;
+    }
+    .dark .btn-glass { color: rgb(251,207,232); background-color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.1); }
+
+    /* pro‑table (compact) */
+    .pro-table {
+      width: 100%; border-collapse: collapse; font-size: 0.65rem;
+      font-family: 'SF Mono','Monaco','Menlo','Consolas',monospace; flex-shrink: 0;
+    }
+    .pro-table thead { position: sticky; top: 0; z-index: 10; }
+    .pro-table th {
+      background: var(--color-surface); color: var(--color-text); font-weight: 600;
+      text-align: left; padding: 0; border-bottom: 1px solid var(--color-border);
+      border-right: 1px solid var(--color-border); background: var(--color-surface-alt);
+    }
+    .pro-table th .th-inner { padding: 0.25rem 0.5rem; }
+    .pro-table th .th-title { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+    .pro-table th .col-type-icon { font-size: 0.55rem; color: var(--color-primary); background: rgba(99,102,241,0.15); padding: 1px 3px; border-radius: 2px; }
+    .pro-table th .th-filter input {
+      width: 100%; padding: 2px 4px; border: 1px solid var(--color-border); border-radius: 2px;
+      background: var(--color-bg); color: var(--color-text); font-size: 0.55rem; font-family: inherit;
+    }
+    .pro-table td { padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--color-border); border-right: 1px solid var(--color-border); color: var(--color-text); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pro-table tbody tr:hover td { background: var(--color-surface-alt); }
+    .pro-table .row-index-col { width: 30px; min-width: 30px; text-align: right; color: var(--color-text-secondary); background: var(--color-surface-alt)!important; font-size: 0.6rem; position: sticky; left: 0; z-index: 5; border-right: 2px solid var(--color-border)!important; }
+    .pro-table thead .row-index-col { background: var(--color-surface)!important; z-index: 15; }
+    .val-null { color: #666; font-style: italic; }
+
+    /* sidebar overlay */
+    .sidebar-overlay { background: rgba(0,0,0,0.5); }
+    .sqlite-sidebar { transition: transform 0.3s; z-index: 50; }
+    @media (max-width: 768px) {
+      .sqlite-sidebar { transform: translateX(-100%); }
+      .sqlite-sidebar.show { transform: translateX(0); }
+    }
+
+    /* Prism */
+    code[class*=language-],pre[class*=language-]{
+      color:#ccc; background:0 0; font-family:Consolas,Monaco,'Andale Mono','Ubuntu Mono',monospace;
+      font-size:0.75em; text-align:left; white-space:pre; word-spacing:normal; word-break:normal;
+      word-wrap:normal; line-height:1.4; tab-size:4; hyphens:none;
+    }
+    pre[class*=language-]{padding:0.5em;margin:0;overflow:auto;background:#2d2d2d;}
+    :not(pre)>code[class*=language-]{background:#2d2d2d;padding:.1em .3em;border-radius:.3em;white-space:normal}
+    .token.comment,.token.block-comment,.token.prolog,.token.doctype,.token.cdata{color:#999}
+    .token.punctuation{color:#ccc}
+    .token.tag,.token.attr-name,.token.namespace,.token.deleted{color:#e2777a}
+    .token.function-name{color:#6196cc}
+    .token.boolean,.token.number,.token.function{color:#f08d49}
+    .token.property,.token.class-name,.token.constant,.token.symbol{color:#f8c555}
+    .token.selector,.token.important,.token.atrule,.token.keyword,.token.builtin{color:#cc99cd}
+    .token.string,.token.char,.token.attr-value,.token.regex,.token.variable{color:#7ec699}
+    .token.operator,.token.entity,.token.url{color:#67cdcc}
+    .token.important,.token.bold{font-weight:700}
+    .token.italic{font-style:italic}
+    .token.entity{cursor:help}
+    .token.inserted{color:green}
+    
+    pre {
+  overflow-x: hidden!important;
+  white-space: pre-wrap!important;
+  word-break: break-word!important;
+}
+  </style>
+</head>
+<body class="bg-white dark:bg-black text-gray-800 dark:text-white h-full flex flex-col overflow-hidden">
+
+  <!-- ========== HEADER ========== -->
+  <header class="h-10 flex items-center justify-between px-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shrink-0 z-20">
+    <div class="flex items-center gap-1">
+      <i class="fas fa-database text-pink-500 dark:text-pink-400 text-base mr-2"></i>
+      <span class="font-semibold text-sm tracking-tight bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">SQLite Lens</span>
+    </div>
+    <button id="themeToggle" class="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">
+      <i class="fas fa-sun text-base light-icon"></i>
+      <i class="fas fa-moon text-base dark-icon hidden"></i>
+    </button>
+  </header>
+
+  <!-- ========== MAIN AREA ========== -->
+  <div class="flex-1 flex min-h-0 mr-12 relative">
+    <!-- left sidebar (tables/views) -->
+    <div id="sqliteSidebar" class="sqlite-sidebar fixed top-10 bottom-10 left-0 w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col p-2 overflow-y-auto z-40">
+      <div class="flex justify-between text-xs font-medium mb-2">
+        <div><span id="tableCount">0</span> Tables</div>
+        <div><span id="viewCount">0</span> Views</div>
+      </div>
+      <input type="text" id="tableSearch" placeholder="Search tables..." class="w-full text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 mb-2">
+      <div class="flex-1 overflow-y-auto" id="tableList">
+        <div class="text-xs text-gray-500 p-2">No tables</div>
+      </div>
+      <div class="h-px bg-gray-300 dark:bg-gray-600 my-2"></div>
+      <div class="flex-1 overflow-y-auto" id="viewList">
+        <div class="text-xs text-gray-500 p-2">No views</div>
+      </div>
+    </div>
+    <!-- sidebar overlay (mobile) -->
+    <div id="sqliteSidebarOverlay" class="fixed inset-0 bg-black/50 z-30 hidden" onclick="document.getElementById('sqliteSidebar').classList.remove('show'); this.classList.add('hidden');"></div>
+
+    <!-- main content -->
+    <main class="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <!-- editor toggle bar (compact) -->
+      <div class="flex items-center gap-1 px-2 py-1 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+<button id="sqliteSidebarToggle" class="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"><i class="fas fa-bars text-base"></i></button>
+<div class="relative flex-1">
+          <i class="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input type="text" id="globalSearch" placeholder="Filter data..." class="w-full pl-7 pr-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded">
+        </div>
+<button id="toggleEditorBtn" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-code text-xs"></i></button>
+        <button id="resetFiltersBtn" class="btn-glass text-xs px-2 py-0.5" style="display:none;">Clear</button>
+      </div>
+
+      <!-- SQL editor (hidden by default) -->
+      <div id="editorSection" class="hidden p-1 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div class="relative">
+          <textarea id="sqlEditor" class="w-full h-20 p-1 text-xs font-mono bg-transparent border border-gray-300 dark:border-gray-600 rounded" placeholder="SELECT ..."></textarea>
+          <div class="flex justify-between mt-1">
+            <button id="runQueryBtnInner" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-play"></i> Run</button>
+            <button id="clearQueryBtn" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-undo"></i> Clear</button>
+            <button id="closeEditorBtnInner" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+        <div id="queryError" class="text-red-500 text-xs mt-1 hidden"></div>
+      </div>
+
+      <!-- results area -->
+      <div class="flex-1 flex flex-col min-h-0">
+        <div id="resetFiltersBox" class="text-center text-xs py-0.5 hidden">
+          <button id="resetFiltersBtn2" class="btn-glass">Reset Filters</button>
+        </div>
+        <div class="flex-1 overflow-auto" id="resultsTableContainer">
+          <div class="empty-state flex flex-col items-center justify-center h-full text-gray-500 text-center p-4">
+            <i class="fas fa-chart-bar text-4xl opacity-30 mb-2"></i>
+            <h3 class="text-sm font-semibold">No Data</h3>
+            <p class="text-xs">Open a database or run a query.</p>
+            <div id="loading" class="hidden mt-2"><i class="fas fa-spinner fa-pulse text-xl"></i></div>
+          </div>
+        </div>
+        <!-- pagination -->
+        <div id="gridPagination" class="flex justify-between items-center px-2 py-1 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs hidden">
+          <div id="paginationInfo"></div>
+          <div class="flex gap-1" id="pageLinks"></div>
+          <div class="flex gap-1">
+            <button id="prevPageBtn" class="btn-glass text-xs px-1.5" disabled><i class="fas fa-angle-left"></i></button>
+            <button id="nextPageBtn" class="btn-glass text-xs px-1.5" disabled><i class="fas fa-angle-right"></i></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ========== RIGHT TOOLBAR (fixed) ========== -->
+  <div class="fixed top-10 bottom-10 right-0 w-12 flex flex-col items-center py-1 gap-0.5 overflow-y-auto border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 z-30">
+    <div class="custom-file-upload relative mb-1">
+      <button class="tool-icon" id="dbFileInputBtn" title="Open file"><i class="fas fa-upload"></i><span>File</span></button>
+      <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3,.db3,.s3db,.sl3" class="absolute inset-0 opacity-0 cursor-pointer">
+    </div>
+    <hr class="w-8 border-gray-300 dark:border-gray-600 my-1">
+    <div class="flex-1 flex flex-col">
+    <button class="tool-icon mb-1" id="createNewBtn" title="New empty DB"><i class="fas fa-plus-circle"></i><span>New</span></button>
+    <button class="tool-icon" id="loadSampleBtn" title="Load sample"><i class="fas fa-flask"></i><span>Sample</span></button>
+    <hr class="w-8 border-gray-300 dark:border-gray-600 my-1">
+    <button class="tool-icon mb-1" id="exportSqlBtn" disabled title="Export SQL"><i class="fas fa-code"></i><span>SQL</span></button>
+    <button class="tool-icon" id="exportDbBtn" disabled title="Download DB"><i class="fas fa-download"></i><span>DB</span></button>
+    <hr class="w-8 border-gray-300 dark:border-gray-600 my-1">
+    <button class="tool-icon mb-1" id="exportCsvBtn" disabled title="CSV"><i class="fas fa-file-csv"></i><span>CSV</span></button>
+    <button class="tool-icon" id="exportJsonBtn" disabled title="JSON"><i class="fas fa-file-code"></i><span>JSON</span></button>
+    </div>
+    <hr class="w-8 border-gray-300 dark:border-gray-600 my-1">
+    <div class="flex flex-col">
+      <button class="tool-icon mb-2" id="resetBtn" disabled title="Close DB"><i class="fas fa-trash-alt"></i><span>Close</span></button>
+    </div>
+  </div>
+
+  <!-- ========== FOOTER (tab switcher) ========== -->
+  <footer class="h-10 flex items-center justify-around px-2 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 text-xs shrink-0 z-20">
+    <button id="tabDataBtn" class="flex flex-col items-center text-primary-500 dark:text-primary-400 active"><i class="fas fa-table text-base"></i><span>Data</span></button>
+    <button id="tabJsonBtn" class="flex flex-col items-center text-gray-500">
+  <i class="fas fa-code text-base"></i>
+  <span>JSON</span>
+</button>
+    <button id="tabSchemaBtn" class="flex flex-col items-center text-gray-500"><i class="fas fa-sitemap text-base"></i><span>Schema</span></button>
+    <button id="tabInspectorBtn" class="flex flex-col items-center text-gray-500"><i class="fas fa-search-plus text-base"></i><span>Inspect</span></button>
+    <button id="createSchemaBtn" class="flex flex-col items-center text-gray-500">
+  <i class="fas fa-file-code text-base"></i>
+  <span>Create DB</span>
+</button>
+  </footer>
+
+<!-- JSON Viewer Modal -->
+<div id="jsonViewerModal" class="fullscreen-modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  <div class="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-lg w-full h-[80dvh] flex flex-col m-2">
+    <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
+      <h3 class="text-base font-semibold">JSON Data</h3>
+      <button id="closeJsonViewerModalBtn"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="overflow-auto p-2 flex-1">
+      <pre class="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs overflow-auto h-full"><code id="jsonOutput" class="language-json"></code></pre>
+      <button id="copyJsonBtn" class="btn-glass text-xs mt-1"><i class="fas fa-copy"></i> Copy</button>
+    </div>
+  </div>
+</div>
+  <!-- ========== MODALS (unchanged structure, hidden) ========== -->
+  <div id="schemaModal" class="fullscreen-modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div class="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-lg w-full h-[80dvh] flex flex-col m-2">
+      <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
+        <h3 class="text-base font-semibold" id="schemaModalTitle">Schema</h3>
+        <button id="closeSchemaModalBtn"><i class="fas fa-times"></i></button>
+      </div>
+<div class="overflow-auto p-2 flex-1 flex flex-col">
+<div class="mb-2"><div class="text-xs font-semibold"><i class="fas fa-columns"></i> Columns</div><table class="pro-table schema-table"></table></div>
+<div class="flex-1 flex flex-col">
+<div class="text-xs font-semibold"><i class="fas fa-file-code"></i> CREATE</div>
+<pre class="flex-1 bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs overflow-auto"><code id="createSqlCode" class="language-sql"></code></pre>
+<button id="copyCreateSqlBtn" class="btn-glass text-xs mt-1"><i class="fas fa-copy"></i> Copy</button>
+</div>
+<div id="schema-indexes-wrapper" class="min-h-20"></div>
+</div>
+</div>
+</div>
+
+  <!-- Schema Create Modal -->
+  <div id="schemaCreateModal" class="fullscreen-modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div class="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-md w-full p-3 m-2 flex flex-col h-[85dvh]">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-base font-semibold">New DB from Schema</h3>
+        <button id="closeSchemaCreateModalBtn"><i class="fas fa-times"></i></button>
+      </div>
+      <textarea id="schemaTextarea" class="w-full flex-1 text-xs font-mono bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 mb-2" placeholder="Paste SQL schema..."></textarea>
+      <button id="applySchemaBtn" class="btn-glass self-end"><i class="fas fa-check"></i> Create</button>
+    </div>
+  </div>
+
+  <!-- Inspector Modal -->
+  <div id="inspectorModal" class="fullscreen-modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div class="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full h-[85dvh] flex flex-col m-2">
+
+<div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
+        <h3 class="text-base font-semibold">Inspector</h3>
+        <button id="closeInspectorModalBtn"><i class="fas fa-times"></i></button>
+      </div>
+
+<div class="flex-1 overflow-auto flex flex-col md:flex-row gap-2 p-2">
+<div class="w-full md:w-60 space-y-2">
+<div class="text-xs font-medium">Database</div>
+          <div id="inspectorDbStatus" class="text-xs font-mono">No database</div>
+          <div class="text-xs font-medium mt-2">Quick PRAGMA</div>
+
+<!-- Quick PRAGMA Dropdown -->
+<div class="relative inline-block w-full">
+  <button id="pragmaDropdownBtn" class="w-full flex items-center justify-between gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+    <span class="flex items-center gap-1"><i class="fas fa-sliders-h text-purple-500"></i> Select PRAGMA...</span>
+    <i class="fas fa-chevron-down text-[0.6rem]"></i>
+  </button>
+  <div id="pragmaDropdownMenu" class="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg z-20 hidden max-h-48 overflow-y-auto">
+    <div data-pragma="integrity_check" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-check text-xs"></i> integrity_check</div>
+    <div data-pragma="foreign_key_check" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-link text-xs"></i> foreign_key_check</div>
+    <div data-pragma="page_size" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-file text-xs"></i> page_size</div>
+    <div data-pragma="page_count" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-chart-simple text-xs"></i> page_count</div>
+    <div data-pragma="encoding" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-language text-xs"></i> encoding</div>
+    <div data-pragma="user_version" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-tag text-xs"></i> user_version</div>
+    <div data-pragma="schema_version" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-code text-xs"></i> schema_version</div>
+    <div data-pragma="journal_mode" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-book text-xs"></i> journal_mode</div>
+    <div data-pragma="auto_vacuum" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-recycle text-xs"></i> auto_vacuum</div>
+    <div data-pragma="synchronous" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-bolt text-xs"></i> synchronous</div>
+    <div data-pragma="compile_options" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-gear text-xs"></i> compile_options</div>
+    <div data-pragma="freelist_count" class="pragma-btn flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"><i class="fas fa-trash-can text-xs"></i> freelist_count</div>
+  </div>
+</div>
+
+<textarea id="inspectorCustomSql" rows="4" class="w-full text-xs border rounded p-1 bg-gray-50 dark:bg-gray-800 mt-2" placeholder="Custom SQL..."></textarea>
+
+<div class="flex gap-1 mt-1">
+            <button id="inspectorRunBtn" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-play"></i> Run</button>
+            <button id="inspectorAllCreatesBtn" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-scroll"></i> Full Schema</button>
+            <button id="inspectorTestTriggerBtn" class="btn-glass text-xs px-2 py-0.5"><i class="fas fa-plus-circle"></i> Trigger</button>
+          </div>
+</div>
+<div class="flex-1 flex flex-col min-h-0">
+<div class="text-xs font-medium mb-1">Output</div>
+<div id="inspectorOutputArea" class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-800 rounded p-2 text-xs font-mono"></div>
+          <button id="inspectorCopyOutputBtn" class="btn-glass text-xs mt-1 self-end"><i class="far fa-copy"></i> Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!-- Confirm Modal (for dangerous actions) -->
+<div id="confirmModal" class="fullscreen-modal hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  <div class="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-xs w-full p-4 text-center">
+    <div class="text-sm font-semibold mb-3" id="confirmMessage">Are you sure?</div>
+    <div class="flex justify-center gap-3">
+      <button id="confirmYesBtn" class="btn-glass btn-glass-danger px-4 py-1">Yes</button>
+      <button id="confirmNoBtn" class="btn-glass px-4 py-1">Cancel</button>
+    </div>
+  </div>
+</div>
+  <div id="toast" class="fixed bottom-12 right-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded px-3 py-1 text-xs hidden z-50"></div>
+
+<script src="js/prism.min.js"></script>
+<script src="js/prism-sql.min.js"></script>
+<script src="js/jafersql.js"></script>
+<script src="js/sqlite-lib.js"></script>
+<script src="js/app.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+  
+</body>
+</html>
